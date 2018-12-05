@@ -4,22 +4,22 @@
   Last Modified by: Brian Smith
 */
 // External Dependencies
-import React, { Component } from "react";
-import { connect } from "react-redux";
-import { Redirect } from "react-router";
+import React, { Component } from 'react'
+import { connect } from 'react-redux'
+import { Redirect } from 'react-router'
 
 // Internal Dependencies
-import styles from "./style.css";
-import * as TYPE from "../../actions/actiontypes";
-import * as RPC from "../../script/rpc";
+import styles from './style.css'
+import * as TYPE from 'actions/actiontypes'
+import * as RPC from 'scripts/rpc'
 
 // React-Redux mandatory methods
 const mapStateToProps = state => {
   return {
     ...state.common,
-    ...state.login
-  };
-};
+    ...state.login,
+  }
+}
 const mapDispatchToProps = dispatch => ({
   setDate: date => dispatch({ type: TYPE.SET_DATE, payload: date }),
   setErrorMessage: message =>
@@ -30,119 +30,118 @@ const mapDispatchToProps = dispatch => ({
   getInfo: payload => dispatch({ type: TYPE.GET_INFO_DUMP, payload: payload }),
   setTime: time => dispatch({ type: TYPE.SET_TIME, payload: time }),
   OpenModal: type => {
-    dispatch({ type: TYPE.SHOW_MODAL, payload: type });
+    dispatch({ type: TYPE.SHOW_MODAL, payload: type })
   },
-  CloseModal: () => dispatch({ type: TYPE.HIDE_MODAL })
-});
+  CloseModal: () => dispatch({ type: TYPE.HIDE_MODAL }),
+})
 
 class Login extends Component {
   getMinDate() {
-    const today = new Date();
+    const today = new Date()
 
-    let month = today.getMonth() + 1;
+    let month = today.getMonth() + 1
     if (month < 10) {
-      month = "0" + month;
+      month = '0' + month
     }
 
-    return `${today.getFullYear()}-${month}-${today.getDate()}`;
+    return `${today.getFullYear()}-${month}-${today.getDate()}`
   }
 
   handleSubmit() {
-    let today = new Date();
-    let unlockDate = new Date(this.props.unlockUntillDate);
-    unlockDate = new Date(unlockDate.setMinutes(today.getTimezoneOffset()));
+    let today = new Date()
+    let unlockDate = new Date(this.props.unlockUntillDate)
+    unlockDate = new Date(unlockDate.setMinutes(today.getTimezoneOffset()))
     unlockDate = new Date(
       unlockDate.setHours(this.props.unlockUntillTime.slice(0, 2))
-    );
+    )
     unlockDate = new Date(
       unlockDate.setMinutes(this.props.unlockUntillTime.slice(3))
-    );
-    const pass = document.getElementById("pass");
+    )
+    const pass = document.getElementById('pass')
 
     let unlockUntill = Math.round(
       (unlockDate.getTime() - today.getTime()) / 1000
-    );
+    )
 
     // this.props.busy(true);
 
-    // if (this.props.stakingFlag) {
-    //
-    //   RPC.PROMISE("walletpassphrase", [pass.value, unSET_TIMElockUntill, true])
-    //     .then(payload => {SET_TIME
-    //       this.props.wipe();SET_TIME
-    //       RPC.PROMISE("getinfo", [])
-    //         .then(payload => {
-    //           delete payload.timestamp;
-    //           return payload;
-    //         })
-    //         .then(payload => {
-    //           // this.props.busy();
-    //           this.props.getInfo(payload);
-    //         });
-    //     })
-    //     .catch(e => {
-    //       if (
-    //         e.error.message ===
-    //         "Error: The wallet passphrase entered was incorrect."
-    //       ) {
-    //         let message = e.error.message.replace("Error: ", "");
-    //         this.props.setErrorMessage(message);
-    //         pass.value = "";
-    //         pass.focus();
-    //       }
-    //     });
-    // } else {
-
-    if (unlockUntill !== NaN && unlockUntill > 3600) {
-      RPC.PROMISE("walletpassphrase", [pass.value, unlockUntill, false])
+    if (this.props.stakingFlag) {
+      RPC.PROMISE('walletpassphrase', [pass.value, unlockUntill, true])
         .then(payload => {
-          this.props.wipe();
-          RPC.PROMISE("getinfo", [])
+          this.props.wipe()
+          RPC.PROMISE('getinfo', [])
             .then(payload => {
-              delete payload.timestamp;
-              return payload;
+              delete payload.timestamp
+              return payload
             })
             .then(payload => {
-              this.props.busy(false);
-              this.props.getInfo(payload);
-            });
+              this.props.busy(false)
+              this.props.getInfo(payload)
+            })
         })
         .catch(e => {
-          pass.value = "";
           if (
             e.error.message ===
-            "Error: The wallet passphrase entered was incorrect."
+            'Error: The wallet passphrase entered was incorrect.'
           ) {
-            this.props.busy(false);
-            this.props.OpenModal("Incorrect Passsword");
-            pass.focus();
-          } else if (e.error.message === "value is type null, expected int") {
-            this.props.busy(false);
-            this.props.OpenModal("FutureDate");
-            pass.focus();
+            let message = e.error.message.replace('Error: ', '')
+            this.props.setErrorMessage(message)
+            this.props.busy(false)
+            pass.value = ''
+            pass.focus()
           }
-        });
+        })
     } else {
-      this.props.OpenModal("FutureDate");
-      setTimeout(() => {
-        this.props.CloseModal();
-      }, 3000);
+      if (unlockUntill !== NaN && unlockUntill > 3600) {
+        RPC.PROMISE('walletpassphrase', [pass.value, unlockUntill, false])
+          .then(payload => {
+            this.props.wipe()
+            RPC.PROMISE('getinfo', [])
+              .then(payload => {
+                delete payload.timestamp
+                return payload
+              })
+              .then(payload => {
+                this.props.busy(false)
+                this.props.getInfo(payload)
+              })
+          })
+          .catch(e => {
+            pass.value = ''
+            if (
+              e.error.message ===
+              'Error: The wallet passphrase entered was incorrect.'
+            ) {
+              this.props.busy(false)
+              this.props.OpenModal('Incorrect Passsword')
+              pass.focus()
+            } else if (e.error.message === 'value is type null, expected int') {
+              this.props.busy(false)
+              this.props.OpenModal('FutureDate')
+              pass.focus()
+            }
+          })
+      } else {
+        this.props.OpenModal('FutureDate')
+        setTimeout(() => {
+          this.props.CloseModal()
+        }, 3000)
+      }
     }
-    // }
   }
   setUnlockDate(input) {
-    let today = new Date();
-    let inputDate = new Date(input);
-    inputDate = new Date(inputDate.setMinutes(today.getTimezoneOffset()));
-    this.props.setDate(input);
+    let today = new Date()
+    let inputDate = new Date(input)
+    inputDate = new Date(inputDate.setMinutes(today.getTimezoneOffset()))
+    this.props.setDate(input)
   }
 
   // Mandatory React method
   render() {
     if (this.props.loggedIn) {
       return (
-        <Redirect to={this.props.match.path.replace("/Login", "/Security")} />
-      );
+        <Redirect to={this.props.match.path.replace('/Login', '/Security')} />
+      )
     }
     return (
       <div id="securitylogin">
@@ -177,12 +176,12 @@ class Login extends Component {
                 placeholder="Password"
                 id="pass"
                 required
-                style={{ width: "100%" }}
+                style={{ width: '100%' }}
               />
             </div>
 
             {/* STAKING FLAG STUFF  TURNED OFF UNTILL WE HAVE A FLAG COMING BACK FROM THE DAEMON TELLING US THAT ITS UNLOCKED FOR STAKING ONLY */}
-            {/* <div className="field" id="checkFeild">
+            <div className="field" id="checkFeild">
               <label>Staking Only:</label>
               <input
                 type="checkbox"
@@ -190,7 +189,7 @@ class Login extends Component {
                 value={this.props.stakingFlag}
                 onChange={() => this.props.stake()}
               />
-            </div> */}
+            </div>
           </fieldset>
 
           <p>
@@ -198,15 +197,15 @@ class Login extends Component {
               type="submit"
               className="button primary"
               onClick={e => {
-                e.preventDefault();
-                this.handleSubmit();
+                e.preventDefault()
+                this.handleSubmit()
               }}
               // disabled={this.props.busyFlag}
             />
           </p>
         </form>
       </div>
-    );
+    )
   }
 }
 
@@ -214,4 +213,4 @@ class Login extends Component {
 export default connect(
   mapStateToProps,
   mapDispatchToProps
-)(Login);
+)(Login)
