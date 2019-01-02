@@ -8,12 +8,12 @@ import { BundleAnalyzerPlugin } from 'webpack-bundle-analyzer';
 import baseConfig from './webpack.config.base';
 import CheckNodeEnv from './internals/scripts/CheckNodeEnv';
 
-CheckNodeEnv('production');
+CheckNodeEnv('development');
 
 export default merge.smart(baseConfig, {
-  mode: 'production',
+  mode: 'development',
 
-  devtool: 'source-map',
+  devtool: 'cheap-module-eval-source-map',
 
   target: 'electron-main',
 
@@ -22,7 +22,7 @@ export default merge.smart(baseConfig, {
   // 'main.js' in root
   output: {
     path: __dirname,
-    filename: './app/main.prod.js',
+    filename: './app/main.dev.js',
   },
 
   plugins: [
@@ -42,7 +42,7 @@ export default merge.smart(baseConfig, {
      * development checks
      */
     new webpack.DefinePlugin({
-      NODE_ENV: 'production',
+      NODE_ENV: 'development',
       DEBUG_PROD: false,
       START_MINIMIZED: false,
     }),
