@@ -5,9 +5,10 @@ import { reduxForm, Field, FieldArray, formValueSelector } from 'redux-form';
 import styled from '@emotion/styled';
 
 // Internal Global
+import { apiPost } from 'lib/tritiumApi';
 import rpc from 'lib/rpc';
 import { defaultSettings } from 'lib/settings';
-import { loadMyAccounts, updateAccountBalances } from 'actions/account';
+import { listAccounts } from 'actions/core';
 import Icon from 'components/Icon';
 import Button from 'components/Button';
 import TextField from 'components/TextField';
@@ -23,6 +24,8 @@ import {
 import Link from 'components/Link';
 import { errorHandler } from 'utils/form';
 import sendIcon from 'images/send.sprite.svg';
+import { numericOnly } from 'utils/form';
+import confirmPin from 'utils/promisified/confirmPin';
 
 // Internal Local
 import Recipients from './Recipients';
@@ -32,7 +35,6 @@ import {
   getRegisteredFieldNames,
   getAccountBalance,
 } from './selectors';
-import PasswordModal from './PasswordModal';
 
 const SendFormComponent = styled.form({
   maxWidth: 800,
@@ -50,16 +52,18 @@ const valueSelector = formValueSelector(formName);
 const mapStateToProps = state => {
   const {
     addressBook,
-    myAccounts,
     settings: { minConfirmations },
     core: {
-      info: { blocks, locked, minting_only },
+      info: { locked, minting_only },
+      accounts,
     },
     form,
   } = state;
   const accountName = valueSelector(state, 'sendFrom');
   const recipients = valueSelector(state, 'recipients');
-  const accBalance = getAccountBalance(accountName, myAccounts);
+  const reference = valueSelector(state, 'reference');
+  const expires = valueSelector(state, 'expires');
+  const accBalance = getAccountBalance(accountName, accounts);
   const hideSendAll =
     recipients &&
     (recipients.length > 1 ||
@@ -67,9 +71,11 @@ const mapStateToProps = state => {
   return {
     minConfirmations,
     locked,
-    blocks,
+    reference,
+    expires,
     minting_only,
-    accountOptions: getAccountOptions(myAccounts),
+    accountName,
+    accountOptions: getAccountOptions(accounts),
     addressNameMap: getAddressNameMap(addressBook),
     fieldNames: getRegisteredFieldNames(
       form[formName] && form[formName].registeredFields
@@ -79,13 +85,12 @@ const mapStateToProps = state => {
 };
 
 const mapDispatchToProps = {
-  loadMyAccounts,
-  updateAccountBalances,
   openConfirmDialog,
   openErrorDialog,
   openSuccessDialog,
   removeModal,
   openModal,
+  listAccounts,
 };
 
 /**
@@ -110,13 +115,22 @@ const mapDispatchToProps = {
         fiatAmount: '',
       },
     ],
-    password: null,
-    message: '',
+    reference: null,
+    expires: null,
   },
-  validate: ({ sendFrom, recipients }) => {
+  validate: ({ sendFrom, recipients, reference, expires }) => {
     const errors = {};
     if (!sendFrom) {
       errors.sendFrom = __('No accounts selected');
+    }
+    if (reference) {
+      if (!reference.match('^[0-9]+$')) {
+        errors.reference = __('Reference must be a number');
+      } else {
+        if (parseInt(reference) > 18446744073709551615) {
+          errors.reference = __('Number is too large');
+        }
+      }
     }
 
     if (!recipients || !recipients.length) {
@@ -149,6 +163,17 @@ const mapDispatchToProps = {
   },
   asyncBlurFields: ['recipients[].address'],
   asyncValidate: async ({ recipients }) => {
+    //Issue with backend
+    console.log(recipients[0]);
+    if (
+      !recipients[0].address.startsWith('2') &&
+      !recipients[0].address.startsWith('4') &&
+      !recipients[0].address.startsWith('8')
+    ) {
+      throw { recipients: [{ address: __('Invalid address') }] };
+    }
+
+    return null;
     const recipientsErrors = [];
     await Promise.all(
       recipients.map(({ address }, i) =>
@@ -176,38 +201,35 @@ const mapDispatchToProps = {
     }
     return null;
   },
-  onSubmit: ({ sendFrom, recipients, message, password }, dispatch, props) => {
+  onSubmit: async (
+    { sendFrom, recipients, reference, expires },
+    dispatch,
+    props
+  ) => {
+    const pin = await confirmPin();
+    if (pin) {
+      const params = {
+        pin,
+        name: sendFrom,
+        address_to: recipients[0].address,
+        amount: parseFloat(recipients[0].amount),
+      };
+      if (reference) params.reference = reference;
+      if (expires) params.expires = expires;
+      console.log(params);
+      return await apiPost('finance/debit/account', params);
+    }
+
     let minConfirmations = parseInt(props.minConfirmations);
     if (isNaN(minConfirmations)) {
       minConfirmations = defaultSettings.minConfirmations;
     }
-
-    if (recipients.length === 1) {
-      const recipient = recipients[0];
-      const params = [
-        sendFrom,
-        recipient.address,
-        parseFloat(recipient.amount),
-        minConfirmations,
-        message || null,
-        null,
-      ];
-      if (password) params.push(password);
-      console.log(password);
-      console.log(params);
-      // if (message) params.push(message);
-      return rpc('sendfrom', params);
-    } else {
-      const queue = recipients.reduce(
-        (queue, r) => ({ ...queue, [r.address]: parseFloat(r.amount) }),
-        {}
-      );
-      return rpc('sendmany', [sendFrom, queue], minConfirmations, message);
-    }
   },
   onSubmitSuccess: (result, dispatch, props) => {
+    if (!result) return;
+
     props.reset();
-    props.loadMyAccounts();
+    props.listAccounts();
     props.openSuccessDialog({
       message: __('Transaction sent'),
     });
@@ -215,13 +237,35 @@ const mapDispatchToProps = {
   onSubmitFail: errorHandler(__('Error sending NXS')),
 })
 class SendForm extends Component {
-  componentDidMount() {
-    this.props.loadMyAccounts();
+  constructor(props) {
+    super(props);
+    this.state = {
+      optionalOpen: false,
+    };
   }
 
   componentDidUpdate(prevProps) {
-    if (prevProps.blocks !== this.props.blocks) {
-      this.props.updateAccountBalances();
+    // if you have EVER added to these items always show till form is reset.
+
+    if (this.props.reference || this.props.expires) {
+      if (
+        this.props.reference !== prevProps.reference ||
+        this.props.expires !== prevProps.expires
+      ) {
+        this.setState({
+          optionalOpen: true,
+        });
+      }
+    }
+  }
+
+  componentDidMount() {
+    // if ref or experation was in the form then open the optionals.
+    // form is NOT reset on component unmount so we must show it on mount
+    if (this.props.reference || this.props.expires) {
+      this.setState({
+        optionalOpen: true,
+      });
     }
   }
 
@@ -248,49 +292,12 @@ class SendForm extends Component {
       touch(...fieldNames);
       return;
     }
+    handleSubmit();
+  };
 
-    // if (locked) {
-    //   const {
-    //     payload: { id: modalId },
-    //   } = this.props.openErrorDialog({
-    //     message: 'You are not logged in',
-    //     note: (
-    //       <>
-    //         <p>
-    //           {__(
-    //             'You need to log in to your wallet before sending transactions'
-    //           )}
-    //         </p>
-    //         <Link
-    //           to="/Settings/Security"
-    //           onClick={() => {
-    //             this.props.removeModal(modalId);
-    //           }}
-    //         >
-    //           {__('Log in now')}
-    //         </Link>
-    //       </>
-    //     ),
-    //   });
-    //   return;
-    // }
-
-    this.props.openConfirmDialog({
-      question: __('Send transaction?'),
-      callbackYes: () => {
-        if (locked || minting_only) {
-          this.props.openModal(PasswordModal, {
-            onSubmit: password => {
-              this.props.change('password', password);
-              // change function seems to be asynchronous
-              // so setTimeout to wait for it to take effect
-              setTimeout(handleSubmit, 0);
-            },
-          });
-        } else {
-          handleSubmit();
-        }
-      },
+  OptionalButtonClick = e => {
+    this.setState({
+      optionalOpen: true,
     });
   };
 
@@ -313,6 +320,7 @@ class SendForm extends Component {
    * @memberof SendForm
    */
   renderAddRecipientButton = ({ fields }) =>
+    //BEING REMOVED TILL NEW API SUPPORTS MULTI SEND
     fields.length === 1 ? (
       <Button onClick={this.addRecipient}>
         {__('Send To multiple recipients')}
@@ -329,7 +337,6 @@ class SendForm extends Component {
    */
   render() {
     const { accountOptions, change, accBalance } = this.props;
-
     return (
       <SendFormComponent onSubmit={this.confirmSend}>
         <FormField label={__('Send from')}>
@@ -347,25 +354,46 @@ class SendForm extends Component {
           change={change}
           addRecipient={this.addRecipient}
           accBalance={accBalance}
+          sendFrom={{
+            token: '0',
+            name: this.props.accountName,
+            tokenAddress: '0',
+          }}
         />
 
-        <FormField connectLabel label={__('Message')}>
-          <Field
-            component={TextField.RF}
-            name="message"
-            multiline
-            rows={1}
-            placeholder={__('Enter your message')}
-          />
-        </FormField>
+        {this.state.optionalOpen ||
+        this.props.reference ||
+        this.props.expires ? (
+          <>
+            {' '}
+            <FormField label={__('Reference')}>
+              <Field
+                component={TextField.RF}
+                name="reference"
+                normalize={numericOnly}
+                placeholder={__('Number, ex 123456789 (Optional)')}
+              />
+            </FormField>
+            {/*<FormField label={__('Expiration')}>
+              <Field
+                component={TextField.RF}
+                name="expires"
+                placeholder={__('Seconds till experation (Optional)')}
+              />
+        </FormField>{' '}*/}
+          </>
+        ) : (
+          <Button
+            style={{ marginTop: '1em' }}
+            onClick={this.OptionalButtonClick}
+            skin="plain-inverted"
+          >
+            {__('Options')}
+          </Button>
+        )}
 
         <SendFormButtons>
-          <FieldArray
-            component={this.renderAddRecipientButton}
-            name="recipients"
-          />
-
-          <Button type="submit" skin="primary">
+          <Button type="submit" skin="primary" wide>
             <Icon icon={sendIcon} className="space-right" />
             {__('Send')}
           </Button>

@@ -11,7 +11,6 @@ import { timing } from 'styles';
 import plusIcon from 'images/plus.sprite.svg';
 import RecipientField from './RecipientField';
 import AmountField from './AmountField';
-import { Subtract } from 'utils/calc';
 
 const RemoveButton = styled.div(({ theme }) => ({
   position: 'absolute',
@@ -76,63 +75,29 @@ class Recipients extends React.Component {
    * @memberof Recipients
    */
   render() {
-    const { fields, change, addRecipient, accBalance } = this.props;
+    const { fields, change, accBalance, sendFrom } = this.props;
 
     if (!fields || !fields.length) return null;
 
-    if (fields.length === 1) {
-      return (
-        <>
-          <Field
-            name={`${fields.name}[0].address`}
-            component={RecipientField}
-            change={change}
-          />
-          <AmountField
-            fullAmount={Subtract([accBalance, 0.01])} // 0.01 = network fee
-            parentFieldName={`${fields.name}[0]`}
-            change={change}
-          />
-        </>
-      );
-    } else {
-      return (
-        <>
-          {fields.map((fieldName, i) => (
-            <Recipient key={i}>
-              <Tooltip.Trigger tooltip={__('Remove recipient')}>
-                <RemoveButton
-                  onClick={() => {
-                    fields.remove(i);
-                  }}
-                >
-                  ✕
-                </RemoveButton>
-              </Tooltip.Trigger>
-
-              <AddressWrapper>
-                <Field
-                  name={`${fieldName}.address`}
-                  component={RecipientField}
-                  change={change}
-                />
-              </AddressWrapper>
-
-              <AmountWrapper>
-                <AmountField parentFieldName={fieldName} change={change} />
-              </AmountWrapper>
-            </Recipient>
-          ))}
-
-          <MoreInfo>
-            <Button skin="hyperlink" onClick={addRecipient}>
-              <PlusIcon icon={plusIcon} className="space-right" />
-              <span className="v-align">{__('Add recipient')}</span>
-            </Button>
-          </MoreInfo>
-        </>
-      );
-    }
+    return (
+      <>
+        <Field
+          name={`${fields.name}[0].address`}
+          component={RecipientField}
+          change={change}
+          sendFrom={sendFrom}
+        />
+        <AmountField
+          fullAmount={accBalance}
+          parentFieldName={`${fields.name}[0]`}
+          change={change}
+          token={{
+            name: sendFrom.token === '0' ? 'NXS' : sendFrom.token,
+            address: sendFrom.tokenAddress,
+          }}
+        />
+      </>
+    );
   }
 }
 export default Recipients;
