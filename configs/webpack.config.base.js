@@ -14,6 +14,8 @@ const moduleSpecVersion = packageJson.moduleSpecVersion;
 const supportedModuleSpecVersion = packageJson.supportedModuleSpecVersion;
 const appId = packageJson.build.appId;
 
+var FriendlyErrorsWebpackPlugin = require('friendly-errors-webpack-plugin');
+
 let nexusPubKey = '';
 try {
   nexusPubKey = readFileSync(
@@ -55,5 +57,6 @@ export default {
     }),
 
     new webpack.NamedModulesPlugin(),
+    new FriendlyErrorsWebpackPlugin(),
   ],
 };
